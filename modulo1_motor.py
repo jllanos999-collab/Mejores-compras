@@ -1,14 +1,15 @@
 #!/usr/bin/env python3
 """
-MÓDULO 1 v2 - Motor autónomo: keywords + selección diaria de productos + web premium.
+MÓDULO 1 v2.1 - Motor autónomo: keywords + selección diaria de productos + web premium.
 
 Cada ejecución:
   1. Captura keywords reales (Google Trends + autocompletado) y las guarda en SQLite.
+     (con tope de tiempo y "cortacircuitos": si Google no responde, NO se cuelga)
   2. Elige 5 productos distintos del catálogo (distintos a los de ayer).
   3. Genera index.html + páginas SEO + sitemap.xml + robots.txt + ideas.csv.
 
 Dependencias: pip install requests
-Ejecutar:     python modulo1_motor.py     (salida en ./site)
+Ejecutar:     python modulo1_motor.py     (salida en ./docs)
 """
 import csv
 import datetime as dt
@@ -34,14 +35,14 @@ CONFIG = {
     "NICHE_SEEDS": ["auriculares inalámbricos", "robot aspirador", "freidora de aire",
                     "monitor gaming", "teclado mecánico"],
     "NICHE_FILTER": ["auricular", "aspirador", "freidora", "monitor", "teclado"],
-    "MODIFIERS": ["mejor", "mejores", "comprar", "barato", "opiniones", "vs", "calidad precio"],
+    "MODIFIERS": ["mejor", "comprar", "barato", "opiniones"],
     "DAILY_PICKS": 5,                   # productos distintos cada día
     "MAX_NEW_PAGES_PER_RUN": 10,
     "OUT_DIR": "docs",                  # carpeta publicada en GitHub Pages
     "DB_FILE": "keywords.db",
 }
 
-HEADERS = {"User-Agent": "Mozilla/5.0 (compatible; TrendBot/2.0)"}
+HEADERS = {"User-Agent": "Mozilla/5.0 (compatible; TrendBot/2.1)"}
 COMMERCIAL_WORDS = {"mejor", "mejores", "comprar", "barato", "opiniones",
                     "vs", "precio", "oferta", "calidad"}
 MESES = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio",
@@ -150,16 +151,26 @@ CATALOG = [
 
 
 # ============================ CAPTURA DE DATOS ============================
+START = time.time()
+MAX_SECONDS = 420        # presupuesto total de red: 7 minutos
+MAX_CONSEC_FAILS = 6     # cortacircuitos: tras 6 fallos seguidos, se deja de intentar
+_consec_fails = 0
+
+
 def http_get(url, **kw):
-    """GET con reintentos; devuelve None si falla (el sistema nunca se cae)."""
-    for attempt in range(3):
-        try:
-            r = requests.get(url, headers=HEADERS, timeout=15, **kw)
-            if r.status_code == 200:
-                return r
-        except requests.RequestException:
-            pass
-        time.sleep(2 * (attempt + 1))
+    """GET rápido, sin reintentos largos, con tope global y cortacircuitos.
+    Devuelve None si algo falla: el sitio se genera igual con el catálogo."""
+    global _consec_fails
+    if time.time() - START > MAX_SECONDS or _consec_fails >= MAX_CONSEC_FAILS:
+        return None
+    try:
+        r = requests.get(url, headers=HEADERS, timeout=(5, 8), **kw)
+        if r.status_code == 200:
+            _consec_fails = 0
+            return r
+    except requests.RequestException:
+        pass
+    _consec_fails += 1
     return None
 
 
@@ -182,7 +193,7 @@ def autocomplete(query):
                  params={"client": "firefox", "hl": CONFIG["LANG"], "q": query})
     try:
         return [s.lower() for s in r.json()[1]] if r else []
-    except (ValueError, IndexError):
+    except (ValueError, IndexError, TypeError):
         return []
 
 
@@ -200,9 +211,12 @@ def collect_keywords():
     niche_trends = [t for t in trends if any(f in t for f in CONFIG["NICHE_FILTER"])]
     for seed in CONFIG["NICHE_SEEDS"] + niche_trends:
         for q in [seed] + [f"{m} {seed}" for m in CONFIG["MODIFIERS"]]:
+            if _consec_fails >= MAX_CONSEC_FAILS or time.time() - START > MAX_SECONDS:
+                print("Google no responde a tiempo: se continúa sin nuevas keywords.")
+                return found
             for kw in autocomplete(q):
                 found[kw] = max(found.get(kw, 0), score(kw, seed in niche_trends))
-            time.sleep(0.4)
+            time.sleep(0.3)
     return found
 
 
@@ -495,7 +509,6 @@ def build_site(db, picks):
     for (kw,) in pending:
         render_keyword_page(kw, CATALOG, out)
         db.execute("UPDATE keywords SET published=1 WHERE kw=?", (kw,))
-        time.sleep(0.4)
     db.commit()
 
     render_index(db, picks, out)
@@ -535,3 +548,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+ 
