@@ -1,17 +1,19 @@
 name: auto
 on:
-  schedule: [{cron: "0 6 * * *"}]   # cada día a las 6:00 UTC
+  schedule: [{cron: "0 6 * * *"}]
   workflow_dispatch:
 permissions:
   contents: write
 jobs:
   run:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with: {python-version: "3.12"}
-      - run: pip install -r requirements.txt && python modulo1_motor.py
+      - run: pip install -r requirements.txt
+      - run: python modulo1_motor.py
       - name: Guardar cambios
         run: |
           git config user.name "github-actions[bot]"
@@ -24,4 +26,3 @@ jobs:
             git pull --rebase origin main || true
             git push origin HEAD:main
           fi
-
