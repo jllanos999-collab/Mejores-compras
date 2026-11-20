@@ -37,7 +37,7 @@ CONFIG = {
     "MODIFIERS": ["mejor", "mejores", "comprar", "barato", "opiniones", "vs", "calidad precio"],
     "DAILY_PICKS": 5,                   # productos distintos cada día
     "MAX_NEW_PAGES_PER_RUN": 10,
-    "OUT_DIR": "site",                  # carpeta publicada en GitHub Pages
+    "OUT_DIR": "docs",                  # carpeta publicada en GitHub Pages
     "DB_FILE": "keywords.db",
 }
 
