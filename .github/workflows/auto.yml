@@ -4,8 +4,13 @@ on:
   workflow_dispatch:
 permissions:
   contents: write
+  pages: write
+  id-token: write
+concurrency:
+  group: pages
+  cancel-in-progress: false
 jobs:
-  run:
+  build:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -26,3 +31,16 @@ jobs:
             git pull --rebase origin main || true
             git push origin HEAD:main
           fi
+      - uses: actions/upload-pages-artifact@v4
+        with:
+          path: docs
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
